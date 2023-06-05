@@ -2,8 +2,10 @@
 <project name="mispi3" default="build" xmlns:ivy="antlib:org.apache.ivy.ant">
     <property file="build.properties"/>
 
-    <path id="classpath.source">
-        <fileset dir="${lib}" includes="**/*.jar"/>
+    <path id="classpath">
+        <fileset dir="${lib}">
+            <include name="*.jar"/>
+        </fileset>
     </path>
     <property name="ant-classlib" value="C:\MSP_lab3\mispi\lab3\lib\xalan.jar"/>
 
@@ -12,7 +14,9 @@
         <ivy:retrieve pattern="lib/[artifact].[ext]" conf="jars"/>
     </target>
     <!-- <taskdef name="xpath" classname="org.apache.tools.ant.taskdefs.XPath" /> -->
-    <taskdef name="xmltask" classname="com.oopsconsultancy.xmltask.ant.XmlTask" classpath="lib/xalan.jar"/>
+    <taskdef name="xmltask" classname="com.oopsconsultancy.xmltask.ant.XmlTask">
+        <classpath refid="classpath"/>
+    </taskdef>
 
 
     <target name="compile" description="compilation project">
