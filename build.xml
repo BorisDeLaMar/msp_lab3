@@ -2,7 +2,7 @@
 <project name="mispi3" default="build" xmlns:ivy="antlib:org.apache.ivy.ant">
     <property file="build.properties"/>
 
-    <path id="classpath">
+    <path id="classpath.source">
         <fileset dir="${lib}">
             <include name="*.jar"/>
         </fileset>
@@ -15,7 +15,10 @@
     </target>
     <!-- <taskdef name="xpath" classname="org.apache.tools.ant.taskdefs.XPath" /> -->
     <taskdef name="xmltask" classname="com.oopsconsultancy.xmltask.ant.XmlTask">
-        <classpath refid="classpath"/>
+        <classpath refid="classpath.source"/>
+    </taskdef>
+    <taskdef name="xpath" classname="org.apache.tools.ant.taskdefs.XPath" >
+        <classpath refid="classpath.source"/>
     </taskdef>
 
 
