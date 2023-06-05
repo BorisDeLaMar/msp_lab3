@@ -1,0 +1,264 @@
+<?xml version="1.0"?>
+<project name="mispi3" default="build" xmlns:ivy="antlib:org.apache.ivy.ant">
+    <property file="build.properties"/>
+
+    <path id="classpath.source">
+        <fileset dir="${lib}" includes="**/*.jar"/>
+    </path>
+
+    <target name="resolve" description="resolve dependencies with ivy">
+        <mkdir dir="${lib}"/>
+        <ivy:retrieve pattern="lib/[artifact].[ext]" conf="jars"/>
+    </target>
+    <target name="prepare" depends="resolve">
+        <taskdef name="xpath" classname="org.apache.tools.ant.taskdefs.optional.XPath" />
+    </target>
+
+    <target name="compile" description="compilation project">
+        <mkdir dir="${compiled.classes}"/>
+        <mkdir dir="${compiled.tests}"/>
+
+        <javac destdir="${compiled.classes}" includeantruntime="false">
+            <src path="${main}"/>
+            <classpath refid="classpath.source"/>
+        </javac>
+
+        <javac destdir="${compiled.tests}" includeantruntime="false">
+            <src path="${tests}"/>
+            <classpath>
+                <pathelement location="${compiled.classes}"/>
+                <path refid="classpath.source"/>
+            </classpath>
+        </javac>
+
+        <fail message="Compilation failed.">
+            <condition>
+                <not>
+                    <and>
+                        <available file="${compiled.classes}"/>
+                        <available file="${compiled.tests}"/>
+                    </and>
+                </not>
+            </condition>
+        </fail>
+    </target>
+
+    <target name="build" depends="compile" description="building project">
+        <jar destfile="${destination.jar}" basedir="${compiled.classes}">
+            <manifest>
+                <attribute name="Main-Class" value="${main.class}"/>
+            </manifest>
+        </jar>
+    </target>
+
+    <target name="clean" description="cleaning">
+        <delete dir="${compiled}"/>
+    </target>
+
+    <target name="test" depends="build" description="junit test income">
+        <mkdir dir="${report}"/>
+        <junitlauncher printsummary="true">
+            <classpath>
+                <pathelement location="${compiled.tests}"/>
+                <pathelement location="${compiled.classes}"/>
+                <path refid="classpath.source"/>
+            </classpath>
+            <testclasses outputdir="${report}">
+                <fileset dir="${compiled.tests}"/>
+            </testclasses>
+            <listener type="legacy-xml" sendSysErr="true" sendSysOut="true"/>
+        </junitlauncher>
+    </target>
+
+    <target name="native2ascii" description="native2ascii">
+        <native2ascii src="${main.resources}" dest="${native2ascii}" includes="**/*.properties"/>
+    </target>
+
+    <target name="copy">
+        <copy todir="${svn}">
+            <fileset dir="${basedir}">
+                <include name="**/*"/>
+            </fileset>
+        </copy>
+        <echo message="Copied"/>
+    </target>
+
+    <!-- Определяем цель svn-add -->
+    <target name="svn-add">
+        <!-- Выполняем команду svn add -->
+        <exec executable="svn">
+            <arg value="add"/>
+            <arg value="${svn}\*"/>
+        </exec>
+        <echo message="Added"/>
+    </target>
+
+    <target name="svn-update" depends="copy">
+        <exec executable="svn">
+            <arg value="update"/>
+            <arg value="${svn}"/>
+        </exec>
+        <echo message="Updated"/>
+    </target>
+
+    <target name="svn-commit">
+        <!-- Запрашиваем у пользователя сообщение для коммита -->
+        <input message="Input commit message: " addproperty="commit.message"/>
+
+        <!-- Выполняем команду svn commit -->
+        <exec executable="svn">
+            <arg value="commit"/>
+            <arg value="-m"/>
+            <arg value="${commit.message}"/>
+            <arg value="${svn}"/>
+        </exec>
+        <echo message="Commited"/>
+    </target>
+
+    <target name="svn-switch" description="Switch SVN repository URL for a local working copy">
+        <exec executable="svn">
+            <arg line="switch"/>
+            <arg value="${svn.url}"/>
+            <arg value="${svn}"/>
+        </exec>
+    </target>
+
+    <target name="svn-checkout" description="Checkout project from SVN repository">
+        <property name="svn.url" value="${svn.url}"/>
+        <property name="svn.dir" value="${svn}"/>
+
+        <exec executable="cmd" dir="${basedir}" failonerror="true">
+            <arg value="/c"/>
+            <arg value="svn"/>
+            <arg value="checkout"/>
+            <arg value="${svn.url}"/>
+            <arg value="${svn.dir}"/>
+        </exec>
+    </target>
+
+    <!--<classpath>
+        <pathelement location="${basedir}/lib/ant-junit.jar"/>
+    </classpath>
+    <taskdef name="while" classname="org.apache.tools.ant.taskdefs.While">
+        <classpath>
+            <pathelement location="${basedir}/lib/ant-junit.jar"/>
+        </classpath>
+    </taskdef>-->
+
+    <taskdef resource="net/sf/antcontrib/antlib.xml" classpath="lib/ant-contrib.jar"/>
+    <path id="svnant.classpath">
+        <fileset dir="${basedir}/lib">
+            <include name="**/*.jar" />
+        </fileset>
+    </path>
+    <property name="lib.dir" value="${basedir}/lib"/>
+    <path id="classpath">
+        <fileset dir="${lib.dir}">
+            <include name="*.jar"/>
+        </fileset>
+    </path>
+    <taskdef resource="org/tigris/subversion/svnant/svnantlib.xml" classpathref="svnant.classpath"/>
+
+    <target name="history" depends="compile, svn-checkout" description="Rollback changes on failed compilation">
+        <!-- Получаем последнюю работающую ревизию -->
+        <property name="working.revision" value="${checkout.revision}"/>
+
+        <!-- Сохраняем текущую дату и время в отдельную переменную -->
+        <tstamp>
+            <format property="backup.timestamp" pattern="yyyyMMdd-HHmmss"/>
+        </tstamp>
+
+        <!-- Проверяем результаты компиляции -->
+        <condition property="compilation.failed">
+            <not>
+                <and>
+                    <available file="${compiled.classes}"/>
+                    <available file="${compiled.tests}"/>
+                </and>
+            </not>
+        </condition>
+
+        <!-- Переменная для хранения номера ревизии -->
+        <property name="rev.number" value="${working.revision}"/>
+
+        <!-- Если компиляция не удалась, выполняем сборку с предыдущей ревизии -->
+        <for list="${rev.number}, ${compilation.failed}" param="iteration">
+            <sequential>
+                <!-- Получаем номер ревизии из параметра -->
+                <property name="rev.number" value="${iteration}" />
+
+                <!-- Если номер ревизии меньше или равен 0, выходим из цикла -->
+                <condition property="revert.completed">
+                    <equals arg1="${rev.number}" arg2="0"/>
+                </condition>
+
+                <!-- Если удалось завершить сборку, выходим из цикла -->
+                <condition property="build.completed">
+                    <and>
+                        <available file="${compiled.classes}"/>
+                        <available file="${compiled.tests}"/>
+                    </and>
+                </condition>
+
+                <!-- Если компиляция не удалась, откатываем изменения до предыдущей ревизии -->
+                <if>
+                    <equals arg1="${compilation.failed}" arg2="true"/>
+                    <then>
+                        <svn revert="-R ${rev.number}"/>
+                    </then>
+                </if>
+            </sequential>
+        </for>
+
+        <!-- Получаем номер последней работающей ревизии -->
+        <exec command="svn" outputproperty="svn.revision">
+            <arg value="info"/>
+            <arg value="${svn}"/>
+            <arg value="--show-item"/>
+            <arg value="revision"/>
+        </exec>
+        <touch file="${history}"/>
+        <xpath input="build.xml" expression="/project/version/text()" output="${build.number.file}"/>
+
+        <!-- Получаем номер предыдущей работающей ревизии -->
+        <exec command="svn" outputproperty="svn.log" failonerror="true">
+            <arg line='log -l 2 "${svn}" --xml'/>
+        </exec>
+        <xpath input="${svn.log}" expression="/log/logentry[position()=2]/@revision" output="last.working.revision"/>
+
+        <!-- Получаем список всех файлов, изменившихся после последней успешной компиляции -->
+        <exec command="svn" outputproperty="svn.diff" failonerror="true">
+            <arg line='diff -r "${last.working.revision}:${working.revision}" "${svn}" --xml'/>
+        </exec>
+        <xmlproperty file="${svn.diff}" xpath="/diff/target/diff/diffentry/@path" trim="true" property="modified.files" />
+
+        <!-- Если удалось завершить сборку, формируем файл с результатами diff -->
+        <if>
+            <isset property="build.completed"/>
+            <then>
+                <svn>
+                    <!-- Получаем diff для всех изменённых файлов -->
+                    <diff path="${project.dir}" revision="${working.revision}" revision2="${rev.number+1}" username="${svn.user}" password="${svn.password}">
+                        <xmloutput property="diff.xml"/>
+                    </diff>
+
+                    <!-- Извлекаем из XML все изменения -->
+                    <xmlproperty file="${diff.xml}" xpath="/diff/target/diff/@path" trim="true" property="diff.files"/>
+
+                    <!-- Создаём файл с результатами diff -->
+                    <echo file="diff-${backup.timestamp}.txt" append="false">${diff.files}</echo>
+                </svn>
+            </then>
+        </if>
+    </target>
+
+    <target name="copy-back" depends="history">
+        <copy todir="${basedir}">
+            <fileset dir="${svn}">
+                <include name="**/*"/>
+            </fileset>
+        </copy>
+        <echo message="Copied back"/>
+    </target>
+
+</project>

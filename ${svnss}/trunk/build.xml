@@ -1,0 +1,238 @@
+<?xml version="1.0"?>
+<project name="mispi3" default="build" xmlns:ivy="antlib:org.apache.ivy.ant">
+    <property file="build.properties"/>
+
+    <path id="classpath.source">
+        <fileset dir="${lib}" includes="**/*.jar"/>
+    </path>
+
+    <taskdef resource="net/sf/antcontrib/antlib.xml">
+        <classpath>
+            <pathelement location="lib/ant-contrib.jar"/>
+        </classpath>
+    </taskdef>
+
+    <target name="resolve" description="resolve dependencies with ivy">
+        <mkdir dir="${lib}"/>
+        <ivy:retrieve pattern="lib/[artifact].[ext]" conf="jars"/>
+    </target>
+    <target name="cleanLib" description="Remove lib directory">
+        <delete dir="${lib}"/>
+    </target>
+    <target name="clean-allLib" depends="cleanLib" description="clean ivy cache">
+        <ivy:cleancache/>
+    </target>
+
+    <target name="compile" description="компиляция исходных кодов проекта">
+        <mkdir dir="${compiled.classes}"/>
+        <mkdir dir="${compiled.tests}"/>
+
+        <javac destdir="${compiled.classes}" includeantruntime="false">
+            <src path="${main}"/>
+            <classpath refid="classpath.source"/>
+        </javac>
+
+        <javac destdir="${compiled.tests}" includeantruntime="false">
+            <src path="${tests}"/>
+            <classpath>
+                <pathelement location="${compiled.classes}"/>
+                <path refid="classpath.source"/>
+            </classpath>
+        </javac>
+    </target>
+
+    <target name="build" depends="compile" description=" компиляция исходных кодов
+    проекта и их упаковка в исполняемый jar-архив. Компиляцию исходных кодов реализовать посредством вызова цели compile">
+        <jar destfile="${destination.jar}" basedir="${compiled.classes}">
+            <manifest>
+                <attribute name="Main-Class" value="${main.class}"/>
+            </manifest>
+        </jar>
+    </target>
+
+    <target name="clean" description="удаление скомпилированных классов проекта и всех временных файлов (если они есть)">
+        <delete dir="${compiled}"/>
+    </target>
+
+    <target name="test" depends="build" description="запуск junit-тестов проекта.
+    Перед запуском тестов необходимо осуществить сборку проекта (цель build)">
+        <mkdir dir="${report}"/>
+        <junitlauncher printsummary="true">
+            <classpath>
+                <pathelement location="${compiled.tests}"/>
+                <pathelement location="${compiled.classes}"/>
+                <path refid="classpath.source"/>
+            </classpath>
+            <testclasses outputdir="${report}">
+                <fileset dir="${compiled.tests}"/>
+            </testclasses>
+            <listener type="legacy-xml" sendSysErr="true" sendSysOut="true"/>
+        </junitlauncher>
+    </target>
+
+    <target name="xml" description="валидация всех xml-файлов в проекте">
+        <xmlvalidate failonerror="no">
+            <fileset dir="${main}" includes="**/*.xml"/>
+        </xmlvalidate>
+    </target>
+
+    <target name="doc" depends="build"
+            description="добавление в MANIFEST.MF MD5 и SHA-1 файлов проекта,
+            а также генерация и добавление в архив javadoc по всем классам проекта">
+        <delete dir="${doc}"/>
+        <mkdir dir="${doc}"/>
+
+        <mkdir dir="tmp/"/>
+
+        <checksum algorithm="SHA1" todir="tmp/" totalproperty="sha1">
+            <fileset dir="${main}"/>
+        </checksum>
+
+        <checksum algorithm="MD5" todir="tmp/" totalproperty="md5">
+            <fileset dir="${main}"/>
+        </checksum>
+
+        <delete dir="tmp/"/>
+
+        <javadoc destdir="${doc}">
+            <classpath refid="classpath.source"/>
+            <fileset dir="${main}"/>
+        </javadoc>
+
+        <jar destfile="${doc}/javadoc.jar" basedir="${doc}">
+            <manifest>
+                <attribute name="SHA1" value="${sha1}"/>
+                <attribute name="MD5" value="${md5}"/>
+            </manifest>
+        </jar>
+    </target>
+
+    <target name="native2ascii" description="преобразование native2ascii для копий файлов локализации
+    (для тестирования сценария все строковые параметры необходимо вынести из классов в файлы локализации)">
+        <native2ascii src="${main.resources}" dest="${native2ascii}" includes="**/*.properties"/>
+    </target>
+
+    <target name="report" depends="test" description="в случае успешного прохождения тестов сохраняет отчет junit в формате xml,
+    добавляет его в репозиторий git и выполняет commit">
+
+        <junitreport todir="${report}">
+
+            <fileset dir="${report}">
+                <include name="TEST-*.xml" />
+            </fileset>
+
+            <report todir="${report}/html" />
+        </junitreport>
+
+        <exec executable="${shell}">
+            <arg value="${path}"/>
+            <arg value="git add ${report}/TEST-*.xml"/>
+        </exec>
+
+        <exec executable="${shell}">
+            <arg value="${path}"/>
+            <arg value="git commit -m reportFromTarget"/>
+        </exec>
+
+    </target>
+
+    <target name="team" description="осуществляет получение из git-репозитория 3 предыдущих ревизий, их сборку (по аналогии с основной)
+    и упаковку получившихся jar-файлов в zip-архив. Сборку реализовать посредством вызова цели build">
+        <mkdir dir="${team}"/>
+
+        <exec executable="${shell}" outputproperty="start">
+            <arg value="${path}"/>
+            <arg value="git log --pretty=format:%h -1"/>
+        </exec>
+
+        <for list="~,~~,~~~" param="commit">
+            <sequential>
+                <exec executable="${shell}" outputproperty="commits">
+                    <arg value="${path}"/>
+                    <arg value="git checkout -f HEAD@{commit}"/>
+                </exec>
+
+                <antcall target="build">
+                    <param name="destination.jar" value="team/@{commit}.jar"/>
+                </antcall>
+
+                <exec executable="${shell}" outputproperty="commits">
+                    <arg value="${path}"/>
+                    <arg value="git checkout -f ${start}"/>
+                </exec>
+            </sequential>
+        </for>
+    </target>
+
+    <target name="env" description="осуществляет сборку и запуск программы в альтернативных окружениях;
+    окружение задается версией java и набором аргументов виртуальной машины в файле параметров">
+        <mkdir dir="${compiled.classes}"/>
+        <mkdir dir="${compiled.tests}"/>
+
+        <javac destdir="${compiled.classes}" includeantruntime="false" source="${jvm.ver}"
+               target="${jvm.ver}" fork="true">
+            <src path="${main}"/>
+            <classpath refid="classpath.source"/>
+            <compilerarg line="${jvm.params}"/>
+        </javac>
+
+        <javac destdir="${compiled.tests}" includeantruntime="false" source="${jvm.ver}"
+               target="${jvm.ver}" fork="true">
+            <src path="${tests}"/>
+            <classpath>
+                <pathelement location="${compiled.classes}"/>
+                <path refid="classpath.source"/>
+            </classpath>
+            <compilerarg line="${jvm.params}"/>
+        </javac>
+
+        <jar destfile="${destination.jar}" basedir="${compiled.classes}">
+            <manifest>
+                <attribute name="Main-Class" value="${main.class}"/>
+            </manifest>
+        </jar>
+
+    </target>
+
+    <target name="copy">
+        <copy todir="${svn}">
+            <fileset dir="${basedir}">
+                <include name="**/*"/>
+            </fileset>
+        </copy>
+        <echo message="Copied"/>
+    </target>
+
+    <!-- Определяем цель svn-add -->
+    <target name="svn-add">
+        <!-- Выполняем команду svn add -->
+        <exec executable="svn">
+            <arg value="add"/>
+            <arg value="${svn}"/>
+        </exec>
+        <echo message="Added"/>
+    </target>
+
+    <target name="svn-update" depends="copy">
+        <exec executable="svn">
+            <arg value="update"/>
+            <arg value="${svn}"/>
+        </exec>
+        <echo message="Updated"/>
+    </target>
+
+    <target name="svn-commit">
+        <!-- Запрашиваем у пользователя сообщение для коммита -->
+        <input message="Input commit message: " addproperty="commit.message"/>
+
+        <!-- Выполняем команду svn commit -->
+        <exec executable="svn">
+            <arg value="commit"/>
+            <arg value="-m"/>
+            <arg value="${commit.message}"/>
+            <arg value="${svn}"/>
+        </exec>
+        <echo message="Commited"/>
+    </target>
+
+</project>

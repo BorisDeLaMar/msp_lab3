@@ -1,0 +1,28 @@
+compiled = target
+compiled.classes = ${compiled}/classes
+compiled.tests = ${compiled}/tests
+
+main = src/main
+main.class = src/main/java/beans/HandlerBean.java
+tests = src/test
+main.resources = ${main}/resources
+
+lib = lib
+
+destination.jar = out/artifacts/mispi3.jar
+
+report = report/
+
+doc = doc/
+
+native2ascii = native2ascii/
+
+jvm.ver = 18
+jvm.params = -Xlint:unchecked -J-Xmx3G -J-Xms2G
+
+team = team
+
+svn=C:/MSP_lab3/mispi/svn_repo/user_repo
+
+shell = cmd
+path = /c
