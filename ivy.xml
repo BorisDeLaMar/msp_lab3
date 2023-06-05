@@ -26,5 +26,7 @@
         <!-- https://mvnrepository.com/artifact/ant/ant-optional -->
         <dependency org="ant" name="ant-optional" rev="1.5.3-1"/>
         <dependency org="werken-xpath" name="werken-xpath" rev="0.9.4"/>
+        <!-- https://mvnrepository.com/artifact/xalan/xalan -->
+        <dependency org="xalan" name="xalan" rev="2.7.3"/>
     </dependencies>
 </ivy-module>

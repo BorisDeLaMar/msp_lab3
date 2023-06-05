@@ -5,12 +5,15 @@
     <path id="classpath.source">
         <fileset dir="${lib}" includes="**/*.jar"/>
     </path>
+    <property name="ant-classlib" value="C:\MSP_lab3\mispi\lab3\lib\xalan.jar"/>
 
     <target name="resolve" description="resolve dependencies with ivy">
         <mkdir dir="${lib}"/>
         <ivy:retrieve pattern="lib/[artifact].[ext]" conf="jars"/>
     </target>
-    <target name="prepare" depends="resolve"/>
+    <!-- <taskdef name="xpath" classname="org.apache.tools.ant.taskdefs.XPath" /> -->
+    <taskdef name="xmltask" classname="com.oopsconsultancy.xmltask.ant.XmlTask" classpath="lib/xalan.jar"/>
+
 
     <target name="compile" description="compilation project">
         <mkdir dir="${compiled.classes}"/>
@@ -228,7 +231,12 @@
         <exec command="svn" outputproperty="svn.diff" failonerror="true">
             <arg line='diff -r "${last.working.revision}:${working.revision}" "${svn}" --xml'/>
         </exec>
-        <xmlproperty file="${svn.diff}" xpath="/diff/target/diff/diffentry/@path" trim="true" property="modified.files" />
+        <property name="modified.files" value="" />
+        <foreach target="diff-file" param="modified.file" delimiter="${line.separator}">
+            <fileset dir="${basedir}">
+                <include name="${modified.file}" />
+            </fileset>
+        </foreach>
 
         <!-- Если удалось завершить сборку, формируем файл с результатами diff -->
         <if>
@@ -248,6 +256,10 @@
                 </svn>
             </then>
         </if>
+    </target>
+
+    <target name="diff-file">
+        <property name="modified.files" value="${modified.files}${line.separator}${modified.file}" />
     </target>
 
     <target name="copy-back" depends="history">
