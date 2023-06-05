@@ -10,9 +10,7 @@
         <mkdir dir="${lib}"/>
         <ivy:retrieve pattern="lib/[artifact].[ext]" conf="jars"/>
     </target>
-    <target name="prepare" depends="resolve">
-        <taskdef name="xpath" classname="org.apache.tools.ant.taskdefs.optional.XPath" />
-    </target>
+    <target name="prepare" depends="resolve"/>
 
     <target name="compile" description="compilation project">
         <mkdir dir="${compiled.classes}"/>
