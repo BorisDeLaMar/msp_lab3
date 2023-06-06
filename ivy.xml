@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="ISO-8859-1"?>
+<?xml version="1.0" encoding="UTF-8"?>
 <ivy-module version="2.0"
             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
             xsi:noNamespaceSchemaLocation="http://ant.apache.org/ivy/schemas/ivy.xsd">
@@ -26,5 +26,6 @@
         <dependency org="werken-xpath" name="werken-xpath" rev="0.9.4"/>
         <!-- https://mvnrepository.com/artifact/xalan/xalan -->
         <dependency org="xalan" name="xalan" rev="2.7.3"/>
+
     </dependencies>
 </ivy-module>
