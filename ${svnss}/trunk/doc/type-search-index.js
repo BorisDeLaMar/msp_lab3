@@ -1,1 +1,0 @@
-typeSearchIndex = [{"l":"All Classes and Interfaces","u":"allclasses-index.html"},{"p":"beans","l":"ClockBean"},{"p":"utils","l":"DataBaseHandler"},{"p":"beans","l":"HandlerBean"},{"p":"utils","l":"Hit"}];updateSearchResults();

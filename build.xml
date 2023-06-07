@@ -2,6 +2,11 @@
 <project name="mispi3" default="build" xmlns:ivy="antlib:org.apache.ivy.ant">
     <property file="build.properties"/>
 
+    <property name="compilation.failed" value="false"/>
+    <propertyfile file="build.properties">
+        <entry key="compilation.failed" value="${compilation.failed}"/>
+    </propertyfile>
+
     <path id="classpath.source">
         <fileset dir="${lib}">
             <include name="*.jar"/>
@@ -15,10 +20,10 @@
         <ivy:retrieve pattern="lib/[artifact].[ext]" conf="jars"/>
     </target>
 
-    <!-- <taskdef name="xpath" classname="org.apache.tools.ant.taskdefs.XPath" /> -->
+    <!-- <taskdef name="xpath" classname="org.apache.tools.ant.taskdefs.XPath" />
     <taskdef name="xmltask" classname="com.oopsconsultancy.xmltask.ant.XmlTask">
         <classpath refid="classpath.source"/>
-    </taskdef>
+    </taskdef>-->
 
     <target name="copy">
         <copy todir="${svn}">
@@ -30,7 +35,6 @@
     </target>
 
     <!-- Определяем цель svn-add -->
-
     <target name="svn-add">
         <!-- Выполняем команду svn add -->
         <exec executable="svn">
@@ -43,7 +47,6 @@
     <target name="svn-commit">
         <!-- Запрашиваем у пользователя сообщение для коммита -->
         <input message="Input commit message: " addproperty="commit.message"/>
-
         <!-- Выполняем команду svn commit -->
         <exec executable="svn">
             <arg value="commit"/>
@@ -75,11 +78,7 @@
         </exec>
     </target>
 
-    <target name="diff-file">
-        <property name="modified.files" value="${modified.files}${line.separator}${modified.file}" />
-    </target>
-
-    <target name="copy-back" depends="history">
+    <target name="copy-back">
         <copy todir="${basedir}">
             <fileset dir="${svn}">
                 <include name="**/*"/>
@@ -88,7 +87,11 @@
         <echo message="Copied back"/>
     </target>
 
-    <target name="compile_before">
+    <target name="clean" description="cleaning">
+        <delete dir="${compiled}"/>
+    </target>
+
+    <target name="compile_before" depends="clean">
         <mkdir dir="${compiled.classes}"/>
         <mkdir dir="${compiled.tests}"/>
 
@@ -105,12 +108,20 @@
             </classpath>
         </javac>
 
-        <condition property="compile.failed">
+        <antcall target="clean" />
+        <available file="${compiled.classes}" property="compiled.classes.available"/>
+        <available file="${compiled.tests}" property="compiled.tests.available"/>
+        <condition property="flag" value="false" else="true">
+            <not>
                 <and>
                     <available file="${compiled.classes}"/>
                     <available file="${compiled.tests}"/>
                 </and>
+            </not>
         </condition>
+        <propertyfile file="build.properties">
+            <entry key="compilation.failed" value="${flag}" />
+        </propertyfile>
     </target>
 
     <target name="compile" depends="compile_before" description="compilation project">
@@ -124,9 +135,6 @@
         </jar>
     </target>
 
-    <target name="clean" description="cleaning">
-        <delete dir="${compiled}"/>
-    </target>
 
     <target name="test" depends="build" description="junit test income">
         <mkdir dir="${report}"/>
@@ -147,8 +155,6 @@
         <native2ascii src="${main.resources}" dest="${native2ascii}" includes="**/*.properties"/>
     </target>
 
-    <property name="revisionsList" value=""/>
-
     <target name="list-revisions">
         <!-- сохраняем вывод команды SVN в переменной -->
         <exec executable="svn" output="revisions.txt">
@@ -157,32 +163,50 @@
             <arg value="-r"/>
             <arg value="1:HEAD"/>
         </exec>
-        <loadfile property="revisionsList" srcFile="revisions.txt" encoding="UTF-8" />
-        <echo encoding="windows-1251">${revisionsList}</echo>
     </target>
 
-    <target name="history-one" depends="list-revisions">
-        <!-- Проверяем результаты компиляции -->
-        <condition property="compilation.failed">
-                <and>
-                    <available file="${compiled.classes}"/>
-                    <available file="${compiled.tests}"/>
-                </and>
-        </condition>
+    <target name="history" depends="list-revisions, compile" description="blabalbalabllbllba">
+        <loadfile property="temp" srcFile="revisions.txt" encoding="windows-1251" />
+        <!--<echo>${temp}</echo>-->
 
-        <echo>${revisionsList}</echo>
         <!-- разбиваем список ревизий на отдельные значения -->
-        <propertyregex property="revisions" input="${revisionsList}" regexp="r[0-9]+" select="\0" global="true" />
+        <propertyregex property="revisions" input="${temp}" regexp="r[0-9]+" select="\0" global="true" />
         <!-- обрабатываем каждую ревизию в цикле -->
-        <foreach list="${revisions}" target="process-revision" param="revision"/>
+        <foreach list="${revisions}" target="process-revision" param="revision">
+            <param name="revision" value="${item}" />
+            <param name="stopOnSuccess" value="true"/>
+        </foreach>
     </target>
 
     <target name="process-revision">
         <!-- здесь вы можете обрабатывать каждую ревизию, передавая ее в параметре 'revision' -->
         <echo>Processing revision ${revision}</echo>
+
+        <!-- Обновляем код до указанной ревизии в SVN -->
         <antcall target="svn-update">
             <param name="revision" value="${revision}" />
         </antcall>
+
+        <!-- копируем необходимые файлы из user_repo -->
+        <antcall target="copy-back" />
+        <!-- note: здесь ваш код для копирования файлов -->
+
+        <!-- компилируем проект -->
+        <antcall target="compile" />
+        <!-- проверяем условие, чтобы остановить выполнение цикла -->
+        <if>
+            <!-- Если проект успешно скомпилирован на текущей ревизии, останавливаем выполнение цикла -->
+            <equals arg1="${compilation.failed}" arg2="false" />
+            <!-- Если мы откатились до успешной ревизии, останавливаем выполнение цикла
+            <equals arg1="${revision}" arg2="${successful.revision}" /> -->
+            <then>
+                <echo>Compilation successful on revision ${revision}, exiting loop.</echo>
+                <fail message="Loop terminated." status="0"/>
+            </then>
+            <else>
+                <echo>Something went wrong</echo>
+            </else>
+        </if>
     </target>
 
     <target name="svn-update">
@@ -191,37 +215,7 @@
             <arg value="update" />
             <arg value="-r" />
             <arg value="${revision}" />
-            <arg value="-q" /> <!-- опция, чтобы уменьшить вывод команды -->
             <arg value="${svn}" />
-        </exec>
-    </target>
-
-    <target name="history" depends="compile" description="Rollback changes on failed compilation">
-
-        <!-- Проверяем результаты компиляции -->
-        <condition property="compilation.failed">
-            <not>
-                <and>
-                    <available file="${compiled.classes}"/>
-                    <available file="${compiled.tests}"/>
-                </and>
-            </not>
-        </condition>
-
-        <antcall target="list-revisions" />
-
-        <!-- Если компиляция не удалась, откатываем изменения -->
-        <fail message="Compilation failed.">
-            <condition>
-                <contains string="${compilation.failed}" substring="true"/>
-            </condition>
-        </fail>
-
-        <!--dir="${svn} -->
-        <exec executable="svn">
-            <arg value="revert"/>
-            <arg value="-R"/>
-            <arg value="${svn}"/>
         </exec>
     </target>
 </project>
