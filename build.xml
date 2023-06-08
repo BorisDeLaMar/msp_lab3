@@ -26,7 +26,7 @@
     </taskdef>-->
 
     <target name="copy">
-        <copy todir="${svn}">
+        <copy todir="${svn.dir}">
             <fileset dir="${basedir}">
                 <include name="**/*"/>
             </fileset>
@@ -39,7 +39,7 @@
         <!-- Выполняем команду svn add -->
         <exec executable="svn">
             <arg value="add"/>
-            <arg value="${svn}\*"/>
+            <arg value="${svn.dir}\*"/>
         </exec>
         <echo message="Added"/>
     </target>
@@ -52,7 +52,7 @@
             <arg value="commit"/>
             <arg value="-m"/>
             <arg value="${commit.message}"/>
-            <arg value="${svn}"/>
+            <arg value="${svn.dir}"/>
         </exec>
         <echo message="Commited"/>
     </target>
@@ -61,13 +61,12 @@
         <exec executable="svn">
             <arg line="switch"/>
             <arg value="${svn.url}"/>
-            <arg value="${svn}"/>
+            <arg value="${svn.dir}"/>
         </exec>
     </target>
 
     <target name="svn-checkout" description="Checkout project from SVN repository">
         <property name="svn.url" value="${svn.url}"/>
-        <property name="svn.dir" value="${svn}"/>
 
         <exec executable="cmd" dir="${basedir}" failonerror="true">
             <arg value="/c"/>
@@ -80,7 +79,7 @@
 
     <target name="copy-back">
         <copy todir="${basedir}">
-            <fileset dir="${svn}">
+            <fileset dir="${svn.dir}">
                 <include name="**/*"/>
             </fileset>
         </copy>
@@ -108,10 +107,9 @@
             </classpath>
         </javac>
 
-        <antcall target="clean" />
         <available file="${compiled.classes}" property="compiled.classes.available"/>
         <available file="${compiled.tests}" property="compiled.tests.available"/>
-        <condition property="flag" value="false" else="true">
+        <condition property="flag" value="true" else="false">
             <not>
                 <and>
                     <available file="${compiled.classes}"/>
@@ -125,6 +123,7 @@
     </target>
 
     <target name="compile" depends="compile_before" description="compilation project">
+        <echo>${compilation.failed}</echo>
     </target>
 
     <target name="build" depends="compile" description="building project">
@@ -159,7 +158,7 @@
         <!-- сохраняем вывод команды SVN в переменной -->
         <exec executable="svn" output="revisions.txt">
             <arg value="log"/>
-            <arg value="${svn}"/>
+            <arg value="${svn.dir}"/>
             <arg value="-r"/>
             <arg value="1:HEAD"/>
         </exec>
@@ -167,15 +166,33 @@
 
     <target name="history" depends="list-revisions, compile" description="blabalbalabllbllba">
         <loadfile property="temp" srcFile="revisions.txt" encoding="windows-1251" />
-        <!--<echo>${temp}</echo>-->
+        <echo>${temp}</echo>
 
+        <exec executable="svn" outputproperty="svn.revision.current" failonerror="true">
+            <arg value="info" />
+            <arg value="${svn.dir}" />
+        </exec>
+        <!-- Извлекаем номер ревизии из свойства "svn.revision.current" -->
+        <propertyregex property="svn.revision.current.number" input="${svn.revision.current}" regexp="Revision: (\d+)" select="\1" />
+        <echo>${svn.revision.current.number}</echo>
+        <propertyfile file="build.properties">
+            <entry key="svn.cur.rev" value="${svn.revision.current.number}"/>
+        </propertyfile>
         <!-- разбиваем список ревизий на отдельные значения -->
         <propertyregex property="revisions" input="${temp}" regexp="r[0-9]+" select="\0" global="true" />
-        <!-- обрабатываем каждую ревизию в цикле -->
-        <foreach list="${revisions}" target="process-revision" param="revision">
-            <param name="revision" value="${item}" />
-            <param name="stopOnSuccess" value="true"/>
-        </foreach>
+
+        <if>
+            <equals arg1="${compilation.failed}" arg2="true" />
+            <then>
+                <foreach list="${revisions}" target="process-revision" param="revision">
+                    <param name="revision" value="${item}" />
+                    <param name="stopOnSuccess" value="true"/>
+                </foreach>
+            </then>
+            <else>
+                <fail message="Compilation was done without mistakes."/>
+            </else>
+        </if>
     </target>
 
     <target name="process-revision">
@@ -197,10 +214,23 @@
         <if>
             <!-- Если проект успешно скомпилирован на текущей ревизии, останавливаем выполнение цикла -->
             <equals arg1="${compilation.failed}" arg2="false" />
-            <!-- Если мы откатились до успешной ревизии, останавливаем выполнение цикла
-            <equals arg1="${revision}" arg2="${successful.revision}" /> -->
             <then>
                 <echo>Compilation successful on revision ${revision}, exiting loop.</echo>
+                <!-- Создание директории для хранения diff-файлов -->
+                <mkdir dir="${basedir}/diffs" />
+
+                <!-- Определение имени diff-файла, который будет содержать изменения -->
+                <property name="diff.file" value="${basedir}/diffs/changes-${revision}_${svn.cur.rev}.diff" />
+
+                <!-- Создание diff-файла -->
+                <echo>Create diff file ${diff.file} ...</echo>
+                <exec executable="svn" output="${diff.file}" failonerror="true">
+                    <arg value="diff"/>
+                    <arg value="-r"/>
+                    <arg value="${revision}:${svn.cur.rev}"/>
+                    <arg value="${svn.dir}"/>
+                </exec>
+                <!--<antcall target="copy-back"/>-->
                 <fail message="Loop terminated." status="0"/>
             </then>
             <else>
@@ -209,13 +239,46 @@
         </if>
     </target>
 
+    <target name="svn-diff">
+        <property name="svn.revision.current" />
+        <echo>Getting current SVN revision...</echo>
+        <exec executable="svn" outputproperty="svn.revision.current" failonerror="true">
+            <arg value="info"/>
+            <arg value="${svn.dir}" />
+        </exec>
+
+        <echo>Updating to revision ${revision}...</echo>
+        <exec executable="svn" failonerror="true">
+            <arg value="update" />
+            <arg value="-r" />
+            <arg value="${revision}" />
+            <arg value="${svn.dir}" />
+        </exec>
+
+        <!-- Создание директории для хранения diff-файлов -->
+        <mkdir dir="${basedir}/diffs" />
+
+        <!-- Определение имени diff-файла, который будет содержать изменения -->
+        <property name="diff.file" value="${basedir}/diffs/changes-${revision}.diff" />
+
+        <!-- Создание diff-файла -->
+        <echo>Create diff file ${diff.file} ...</echo>
+        <exec executable="svn" output="${diff.file}" failonerror="true">
+            <arg value="diff"/>
+            <arg value="-r"/>
+            <arg value="${revision}:${svn.revision.current}"/>
+            <arg value="${svn.dir}"/>
+        </exec>
+    </target>
+
+
     <target name="svn-update">
         <echo>Updating to revision ${revision}...</echo>
         <exec executable="svn" failonerror="true">
             <arg value="update" />
             <arg value="-r" />
             <arg value="${revision}" />
-            <arg value="${svn}" />
+            <arg value="${svn.dir}" />
         </exec>
     </target>
 </project>
